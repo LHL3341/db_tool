@@ -1,0 +1,15 @@
+db:
+  host: 10.140.84.159
+  port: 9030
+  username: dataresearch
+  password: zu7XBANm!1I9
+
+query:
+  category_keyword: []   # 可多选
+  file_type: ['paper']    # 可多选
+  subject: ['physics']                   # 可多选，也可为空 []
+  db_source: []                       # 空数组表示不限制
+  limit_count: 1
+
+output:
+  base_dir: outputs/physics_paper

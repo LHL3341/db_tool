@@ -1,0 +1,22 @@
+db_tool/
+├── init.py
+├── config.py # 配置项
+├── examples/ # 示例配置
+├── utils/
+│ ├── md_utils.py # Markdown 文件生成工具
+│ ├── db_utils.py # 数据库通用操作（执行 SQL）
+│ ├── sql_builder.py # SQL 查询语句构建工具
+├── main.py # 主程序入口
+├── download_images.py # 图像下载脚本（目前不可用）
+└── split_md_for_extract.py # 分割 Markdown 文件脚本
+
+使用方法：
+1. 参考examples，修改 config.py 中的配置项，运行 main.py 生成 Markdown 文件
+2. 运行 split_md_for_extract.py 分割 Markdown 文件，生成 processed/ 目录 以及 待处理 jsonl 文件
+3. 运行 download_images.py 下载图像
+
+注意事项：
+1. 图像下载脚本（download_images.py）目前不可用，因为需要使用sensesync工具，需要申请权限
+2. 分割 Markdown 文件脚本（split_md_for_extract.py）需要根据实际情况调整 max_chars 参数，max_chars 参数越大，每个 chunk 的文本量越大
+3. 示例配置（examples/）中提供了一些配置示例，query配置参考飞书文档
+
