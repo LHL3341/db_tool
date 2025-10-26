@@ -6,6 +6,7 @@ import json
 # 匹配 Markdown 图片：![caption](path)
 IMG_PATTERN = re.compile(r'!\[(.*?)\]\((.*?)\)')
 
+
 def split_markdown(md_text, max_chars=3000):
     """
     将 Markdown 文件按标题或图片分块。
@@ -23,7 +24,7 @@ def split_markdown(md_text, max_chars=3000):
     return chunks
 
 
-def replace_images_with_placeholders(md_text):
+def replace_images(md_text):
     """
     将图片替换为 [caption]<imageX> 形式，
     并返回映射字典 {<imageX>: path}。
@@ -44,41 +45,71 @@ def replace_images_with_placeholders(md_text):
     return new_text, mapping
 
 
-def process_md_file(md_path: Path, output_dir: Path, max_chars=3000):
+def remove_image_placeholders(md_text):
+    """
+    去掉 <imageX> 占位符，保留 [caption]。
+    """
+    text = re.sub(r"\[(.*?)\]<image\d+>", r"[\1]", md_text)
+    text = re.sub(r"<image\d+>", "", text)
+    return text
+
+
+def process_md_file(md_path: Path, output_dir: Path, start_global_id=1, max_chars=3000):
+    """
+    处理单个 Markdown 文件，生成有图和无图版本。
+    start_global_id: 当前文档开始的全局 chunk id
+    返回: (records_with_img, records_no_img, next_global_id)
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with open(md_path, "r", encoding="utf-8") as f:
         md_text = f.read()
 
     chunks = split_markdown(md_text, max_chars=max_chars)
-    json_records = []
+    records_with_img, records_no_img = [], []
+    global_id = start_global_id
 
     for i, chunk in enumerate(chunks, 1):
-        new_text, mapping = replace_images_with_placeholders(chunk)
+        # 有图版本
+        md_with_img, _ = replace_images(chunk)
+        out_path_img = output_dir / f"chunk_{i:03d}_with_img.md"
+        with open(out_path_img, "w", encoding="utf-8") as f:
+            f.write(md_with_img)
 
-        # 保存修改后的文本块
-        out_path = output_dir / f"chunk_{i:03d}.md"
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(new_text)
-
-        record = {
+        rec_with_img = {
+            "id": global_id,
             "doc": output_dir.name,
             "chunk_id": i,
-            "path": str(out_path),
-            "text": new_text.strip()
+            "path": str(out_path_img),
+            "text": md_with_img.strip()
         }
-        if mapping:
-            record["images"] = mapping
+        records_with_img.append(rec_with_img)
 
-        json_records.append(record)
+        # 无图版本
+        md_no_img = remove_image_placeholders(md_with_img)
+        out_path_no_img = output_dir / f"chunk_{i:03d}_no_img.md"
+        with open(out_path_no_img, "w", encoding="utf-8") as f:
+            f.write(md_no_img)
+
+        rec_no_img = {
+            "id": global_id,
+            "doc": output_dir.name,
+            "chunk_id": i,
+            "path": str(out_path_no_img),
+            "text": md_no_img.strip()
+        }
+        records_no_img.append(rec_no_img)
+
+        global_id += 1
 
     print(f"✅ {md_path.name} -> {len(chunks)} chunks saved to {output_dir}")
-    return json_records
+    return records_with_img, records_no_img, global_id
 
 
 def batch_process(root_dir: str, processed_root: str = "processed", max_chars=3000):
     root = Path(root_dir)
-    all_records = []
+    all_with_img, all_no_img = [], []
+    global_chunk_id = 1  # 全局 chunk id 起始值
 
     for sub in root.iterdir():
         if sub.is_dir():
@@ -87,16 +118,28 @@ def batch_process(root_dir: str, processed_root: str = "processed", max_chars=30
                 continue
             md_path = md_files[0]
             output_dir = Path(processed_root) / sub.name
-            records = process_md_file(md_path, output_dir, max_chars=max_chars)
-            all_records.extend(records)
+            rec_with_img, rec_no_img, global_chunk_id = process_md_file(
+                md_path, output_dir, start_global_id=global_chunk_id, max_chars=max_chars
+            )
+            all_with_img.extend(rec_with_img)
+            all_no_img.extend(rec_no_img)
 
-    # 汇总 JSONL
-    jsonl_path = Path(processed_root) / "all_chunks.jsonl"
-    with open(jsonl_path, "w", encoding="utf-8") as f:
-        for rec in all_records:
+    # 有图版本 JSONL
+    jsonl_with_img = Path(processed_root) / "all_chunks_with_img.jsonl"
+    with open(jsonl_with_img, "w", encoding="utf-8") as f:
+        for rec in all_with_img:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    print(f"\n📄 All chunks written to {jsonl_path} ({len(all_records)} records total)\n")
+    # 无图版本 JSONL
+    jsonl_no_img = Path(processed_root) / "all_chunks_no_img.jsonl"
+    with open(jsonl_no_img, "w", encoding="utf-8") as f:
+        for rec in all_no_img:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    print(f"\n📄 JSONL saved: {jsonl_with_img} ({len(all_with_img)} records)")
+    print(f"📄 JSONL saved: {jsonl_no_img} ({len(all_no_img)} records)\n")
+
+
 
 
 if __name__ == "__main__":

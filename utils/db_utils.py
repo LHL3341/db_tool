@@ -78,7 +78,7 @@ def query_content_batches(host, port, username, password, sha256_list, metadata_
                 print(f"⚠️ 空内容跳过: {sha256} ({title or '无标题'})")
                 continue
 
-            print(parsed)
+            # print(parsed)
             # 确保为列表并按 record_id 排序
             if not isinstance(parsed, list):
                 parsed = [parsed]

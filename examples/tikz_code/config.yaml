@@ -1,0 +1,15 @@
+db:
+  host: 10.140.84.159
+  port: 9030
+  username: dataresearch
+  password: zu7XBANm!1I9
+
+query:
+  category_keyword: ['math']   # 可多选
+  file_type: []    # 可多选
+  subject: []                   # 可多选，也可为空 []
+  db_source: []                       # 空数组表示不限制
+  limit_count: 100000
+
+output:
+  base_dir: outputs/tikz_code
