@@ -7,4 +7,4 @@ python -m main --config examples/${DATA_NAME}/config.yaml
 
 python split_md_for_extract.py --root_dir outputs/${DATA_NAME} --processed_dir processed/${DATA_NAME}
 
-# python download_images.py --doc_root outputs/math_textbook
+python download_images.py --dir processed/math_textbook

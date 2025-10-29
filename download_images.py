@@ -1,56 +1,83 @@
 import os
+import json
 import re
 import subprocess
-from urllib.parse import urlparse
+from urllib.parse import unquote
+from pathlib import Path
+
+# ✅ 设置 AWS 凭据和 endpoint
+os.environ["AWS_ACCESS_KEY_ID"] = "B5850CF7238163559DEC"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "wZK35mmnwq99bl8DxKaJ1elL4RIAAAGaI4FjYMIs"
+AWS_ENDPOINT = "http://d-ceph-ssd-inside.pjlab.org.cn"
+
 
 def safe_filename(name: str) -> str:
-    import re
+    """替换非法字符"""
     return re.sub(r'[\\/*?:"<>|]', '_', name.strip()) or "untitled"
 
-def collect_s3_paths(doc_root):
-    """
-    遍历文档目录，提取 S3 或 HTTP 图片路径
-    返回 [(s3_url, local_path)]
-    """
-    s3_list = []
-    for root, dirs, files in os.walk(doc_root):
-        for file in files:
-            if not file.endswith((".md", ".json")):
-                continue
-            file_path = os.path.join(root, file)
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            urls = re.findall(r'(s3://[^\s)]+|https?://[^\s)]+)', content)
-            for url in urls:
-                img_filename = safe_filename(os.path.basename(url))
-                images_dir = os.path.join(root, "images")
-                os.makedirs(images_dir, exist_ok=True)
-                local_path = os.path.join(images_dir, img_filename)
-                if not os.path.exists(local_path):
-                    s3_list.append((url, local_path))
-    return s3_list
 
-def sync_images_with_sensesync(s3_list):
+def download_and_rewrite_jsonl(process_dir: Path):
     """
-    使用 sensesync 批量同步图片
+    读取 process_dir 下的 all_chunks_with_img.jsonl，
+    下载 S3 图片并更新为本地路径，
+    输出 all_chunks_with_local_img.jsonl。
     """
-    for src, tgt in s3_list:
-        tgt_dir = os.path.dirname(tgt)
-        os.makedirs(tgt_dir, exist_ok=True)
-        cmd = ["srun", "-p", "raise", "/mnt/petrelfs/share/sensesync", "sync", src, tgt]
-        print(f"🔄 同步: {src} -> {tgt}")
-        try:
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ 同步失败: {src}, {e}")
+    input_jsonl = process_dir / "all_chunks_with_img.jsonl"
+    output_jsonl = process_dir / "all_chunks_with_local_img.jsonl"
+    img_dir = process_dir / "images"
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    if not input_jsonl.exists():
+        raise FileNotFoundError(f"❌ 未找到 {input_jsonl}")
+
+    with open(input_jsonl, "r", encoding="utf-8") as fin, \
+         open(output_jsonl, "w", encoding="utf-8") as fout:
+
+        count_total, count_downloaded = 0, 0
+
+        for line in fin:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            images = rec.get("images", {})
+            new_images = {}
+
+            for placeholder, url in images.items():
+                count_total += 1
+                filename = safe_filename(os.path.basename(unquote(url)))
+                local_path = img_dir / filename
+
+                if not local_path.exists():
+                    # 下载图片
+                    cmd = [
+                        "aws", "s3", "cp",
+                        url, str(local_path),
+                        "--endpoint-url", AWS_ENDPOINT
+                    ]
+                    print(f"🔄 下载: {url} -> {local_path}")
+                    try:
+                        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        count_downloaded += 1
+                    except subprocess.CalledProcessError:
+                        print(f"❌ 下载失败: {url}")
+                        continue
+
+                new_images[placeholder] = str(local_path)
+
+            # 更新记录
+            rec["images"] = new_images
+            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+        print(f"\n📦 共处理 {count_total} 张图片，下载 {count_downloaded} 张。")
+        print(f"📄 已保存更新后的 JSONL 到: {output_jsonl}")
+
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="使用 sensesync 同步文档图片")
-    parser.add_argument("--doc_root", type=str, required=True, help="文档根目录")
+    parser = argparse.ArgumentParser(description="下载 JSONL 中的 S3 图片并替换为本地路径")
+    parser.add_argument("--dir", required=True, help="包含 all_chunks_with_img.jsonl 的目录路径")
     args = parser.parse_args()
 
-    s3_list = collect_s3_paths(args.doc_root)
-    print(f"共找到 {len(s3_list)} 张需要同步的图片")
-    sync_images_with_sensesync(s3_list)
-    print("🎉 图片同步完成！")
+    process_dir = Path(args.dir).resolve()
+    download_and_rewrite_jsonl(process_dir)

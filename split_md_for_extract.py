@@ -71,7 +71,7 @@ def process_md_file(md_path: Path, output_dir: Path, start_global_id=1, max_char
 
     for i, chunk in enumerate(chunks, 1):
         # 有图版本
-        md_with_img, _ = replace_images(chunk)
+        md_with_img, mapping = replace_images(chunk)
         out_path_img = output_dir / f"chunk_{i:03d}_with_img.md"
         with open(out_path_img, "w", encoding="utf-8") as f:
             f.write(md_with_img)
@@ -81,7 +81,8 @@ def process_md_file(md_path: Path, output_dir: Path, start_global_id=1, max_char
             "doc": output_dir.name,
             "chunk_id": i,
             "path": str(out_path_img),
-            "text": md_with_img.strip()
+            "text": md_with_img.strip(),
+            "images": mapping
         }
         records_with_img.append(rec_with_img)
 
